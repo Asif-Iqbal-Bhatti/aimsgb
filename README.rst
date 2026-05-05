@@ -41,6 +41,27 @@ Usage
 Refer to the `documentation
 <https://aimsgb-docs.readthedocs.io/en/latest/>`_ for more details.
 
+Changelog
+=========
+
+v1.1.2
+------
+Performance improvements to reduce computation time for complex/high-sigma grain boundaries:
+
+- **get_smallest_multiplier** (``utils.py``): replaced the linear scan (1 … 10 000
+  iterations) with a Fraction-based LCM computation. The smallest integer multiplier
+  is now derived directly from the denominators of each vector element, making the
+  cost independent of the multiplier's magnitude.
+
+- **GBInformation.get_gb_info** (``grain_bound.py``): replaced the nested Python
+  ``for m / for n`` double loop with a fully vectorised NumPy implementation.
+  All (m, n) pairs are built with ``np.meshgrid``; sigma values, co-prime filtering
+  (``np.gcd``), and rotation angles are computed in a single array pass.
+
+- **Grain.make_supercell** (``grain.py``): replaced the per-site, per-coordinate
+  double loop with vectorised NumPy operations. Fractional coordinates for all sites
+  are processed simultaneously via array slicing.
+
 How to cite aimsgb
 ==================
 
