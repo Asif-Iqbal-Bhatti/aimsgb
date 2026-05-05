@@ -138,28 +138,74 @@ class Grain(Structure):
                 in the same layer. Default to 0.25.
             direction (int): Direction to sort the sites by layers. 0: a, 1: b, 2: c
         """
-        if bt == "t":
-            l1, l2 = (-1, -2)
-        else:
-            l1, l2 = (0, 1)
+        frac_coords = self.frac_coords[:, direction]
+        lat_len = self.lattice.abc[direction]
+        frac_tol = tol / lat_len
 
-        l = self.lattice.abc[direction]
-        layers = self.sort_sites_in_layers(tol=tol, direction=direction)
-        l_dist = abs(layers[l1][0][0].coords[direction] - layers[l2][0][0].coords[direction])
+        # Get sorted layer indices and coordinates
+        indices = np.argsort(frac_coords)
+        sorted_coords = frac_coords[indices]
+        
+        diffs = np.diff(sorted_coords)
+        breaks = np.where(diffs > frac_tol)[0] + 1
+        layer_indices = np.split(indices, breaks)
+
+        # Check for wrap-around
+        if len(layer_indices) > 1:
+            if (sorted_coords[0] + 1) - sorted_coords[-1] < frac_tol:
+                layer_indices[0] = np.concatenate([layer_indices[-1], layer_indices[0]])
+                layer_indices = layer_indices[:-1]
+
+        if bt == "t":
+            # Top layer is the one with highest coordinate
+            # (Note: layer_indices is not necessarily sorted by coordinate anymore due to wrap-around)
+            # Find the layer containing the max coord
+            l_idx = -1
+            for i, idxs in enumerate(layer_indices):
+                if np.max(frac_coords[idxs]) == sorted_coords[-1]:
+                    l_idx = i; break
+            l1_indices = layer_indices[l_idx]
+            # Next layer down
+            l2_idx = (l_idx - 1) % len(layer_indices)
+            l2_indices = layer_indices[l2_idx]
+        else:
+            # Bottom layer
+            l_idx = 0
+            for i, idxs in enumerate(layer_indices):
+                if np.min(frac_coords[idxs]) == sorted_coords[0]:
+                    l_idx = i; break
+            l1_indices = layer_indices[l_idx]
+            # Next layer up
+            l2_idx = (l_idx + 1) % len(layer_indices)
+            l2_indices = layer_indices[l2_idx]
+
+        # Calculate layer distance
+        c1 = self.sites[l1_indices[0]].coords[direction]
+        c2 = self.sites[l2_indices[0]].coords[direction]
+        l_dist = abs(c1 - c2)
+        if l_dist > lat_len / 2: # handle periodic boundary
+            l_dist = lat_len - l_dist
+
         l_vector = [1, 1]
-        l_vector.insert(direction, (l - l_dist) / l)
+        l_vector.insert(direction, (lat_len - l_dist) / lat_len)
         new_lat = Lattice(self.lattice.matrix * np.array(l_vector)[:, None])
 
-        layers.pop(l1)
-        sites = reduce(lambda x, y: np.concatenate((x, y), axis=0), layers)
-        new_sites = []
-        l_dist = 0 if bt == "t" else l_dist
-        l_vector = [0, 0]
-        l_vector.insert(direction, l_dist)
-        for site, _ in sites:
-            new_sites.append(PeriodicSite(site.specie, site.coords - l_vector,
-                                          new_lat, coords_are_cartesian=True))
-        self._sites = new_sites
+        # Delete layer 1 sites
+        remaining_indices = np.ones(len(self), dtype=bool)
+        remaining_indices[l1_indices] = False
+        
+        shift = 0 if bt == "t" else l_dist
+        shift_vec = np.zeros(3)
+        shift_vec[direction] = shift
+        
+        new_coords = self.cart_coords[remaining_indices] - shift_vec
+        new_species = [self.species[i] for i in range(len(self)) if remaining_indices[i]]
+        new_props = {k: [v[i] for i in range(len(self)) if remaining_indices[i]] 
+                     for k, v in self.site_properties.items()}
+
+        self._sites = [PeriodicSite(sp, co, new_lat, coords_are_cartesian=True, properties=p)
+                       for sp, co, p in zip(new_species, new_coords, 
+                                            (dict(zip(new_props, t)) for t in zip(*new_props.values())))]
         self._lattice = new_lat
 
     def sort_sites_in_layers(self, tol=0.25, direction=2):
@@ -174,33 +220,26 @@ class Grain(Structure):
         Returns:
             Lists with a list of (site, index) in the same plane as one list.
         """
-        sites_indices = sorted(zip(self.sites, range(len(self))), 
-                               key=lambda x: x[0].frac_coords[direction])
-        layers = []
-        for k, g in groupby(sites_indices, key=lambda x: x[0].frac_coords[direction]):
-            layers.append(list(g))
+        frac_coords = self.frac_coords[:, direction]
+        lat_len = self.lattice.abc[direction]
+        frac_tol = tol / lat_len
+        
+        indices = np.argsort(frac_coords)
+        sorted_coords = frac_coords[indices]
+        
+        diffs = np.diff(sorted_coords)
+        breaks = np.where(diffs > frac_tol)[0] + 1
+        layer_indices = np.split(indices, breaks)
+
+        if len(layer_indices) > 1:
+            if (sorted_coords[0] + 1) - sorted_coords[-1] < frac_tol:
+                layer_indices[0] = np.concatenate([layer_indices[-1], layer_indices[0]])
+                layer_indices = layer_indices[:-1]
+
         new_layers = []
-        k = -1
-        for i in range(len(layers)):
-            if i > k:
-                tmp = layers[i]
-                for j in range(i + 1, len(layers)):
-                    if self.lattice.abc[direction] * abs(
-                                    layers[j][0][0].frac_coords[direction] -
-                                    layers[i][0][0].frac_coords[direction]) < tol:
-                        tmp.extend(layers[j])
-                        k = j
-                    else:
-                        break
-                new_layers.append(sorted(tmp))
-        # check if the 1st layer and last layer are actually the same layer
-        # use the fractional as cartesian doesn't work for unorthonormal
-        if self.lattice.abc[direction] * abs(
-                                new_layers[0][0][0].frac_coords[direction] + 1 -
-                                new_layers[-1][0][0].frac_coords[direction]) < tol:
-            tmp = new_layers[0] + new_layers[-1]
-            new_layers = new_layers[1:-1]
-            new_layers.append(sorted(tmp))
+        for idxs in layer_indices:
+            layer = sorted([(self.sites[i], i) for i in idxs], key=lambda x: x[1])
+            new_layers.append(layer)
         return new_layers
 
     # def set_orthogonal_grain(self):
@@ -325,16 +364,21 @@ class Grain(Structure):
             l = abc_a[direction] + gap
         abc_a[direction] += abc_b[direction] + 2 * gap + vacuum
         new_lat = Lattice.from_parameters(*abc_a, *angles)
-        a_fcoords = new_lat.get_fractional_coords(grain_a.cart_coords)
+        
+        l_vector = np.zeros(3)
+        l_vector[direction] = l
+        
+        all_species = list(grain_a.species) + list(grain_b.species)
+        all_coords = np.concatenate([grain_a.cart_coords, grain_b.cart_coords + l_vector])
+        
+        # Combine site properties
+        all_props = {}
+        for k in set(list(grain_a.site_properties.keys()) + list(grain_b.site_properties.keys())):
+            v1 = grain_a.site_properties.get(k, [None] * len(grain_a))
+            v2 = grain_b.site_properties.get(k, [None] * len(grain_b))
+            all_props[k] = list(v1) + list(v2)
 
-        grain_a = Grain(new_lat, grain_a.species, a_fcoords, site_properties=grain_a.site_properties)
-        l_vector = [0, 0]
-        l_vector.insert(direction, l)
-        b_fcoords = new_lat.get_fractional_coords(
-            grain_b.cart_coords + l_vector)
-        grain_b = Grain(new_lat, grain_b.species, b_fcoords, site_properties=grain_b.site_properties)
-
-        structure = Grain.from_sites(grain_a[:] + grain_b[:])
+        structure = Grain(new_lat, all_species, all_coords, coords_are_cartesian=True, site_properties=all_props)
         structure = structure.get_sorted_structure()
         if to_primitive:
             structure = structure.get_primitive_structure()
