@@ -297,17 +297,48 @@ class GBInformation(dict):
         gb_info = collections.defaultdict(dict)
         sigma_theta = collections.defaultdict(list)
 
-        for m in range(max_m):
-            for n in range(max_m):
-                if not co_prime(m, n):
-                    continue
-                sigma = self.get_sigma(m, n)
-                if self.specific and sigma != self.max_sigma:
-                    continue
-                if not sigma or sigma > self.max_sigma:
-                    continue
-                theta = self.get_theta(m, n)
-                sigma_theta[sigma].append([theta, m, n])
+        # Build all (m, n) pairs at once with numpy, then filter
+        m_range = np.arange(max_m, dtype=np.int64)
+        M, N = np.meshgrid(m_range, m_range, indexing='ij')
+        M, N = M.ravel(), N.ravel()
+
+        axis_sq = int(round(float(inner(self.axis, self.axis))))
+        sigma_arr = M ** 2 + N ** 2 * axis_sq
+
+        # Remove factors of 2 from every sigma (vectorised while-loop)
+        while True:
+            mask = (sigma_arr > 0) & (sigma_arr % 2 == 0)
+            if not np.any(mask):
+                break
+            sigma_arr[mask] //= 2
+
+        # Co-prime filter: gcd(m, n) must be 0 or 1
+        coprime = np.gcd(M, N) <= 1
+
+        if self.specific:
+            valid = coprime & (sigma_arr == self.max_sigma)
+        else:
+            valid = coprime & (sigma_arr > 1) & (sigma_arr <= self.max_sigma)
+
+        M_v, N_v, s_v = M[valid], N[valid], sigma_arr[valid]
+
+        if len(M_v) == 0:
+            raise ValueError("Cannot find any matching GB. Most likely there "
+                             f"is no sigma {self.max_sigma}{self.axis} GB.")
+
+        # Vectorised theta: 2*atan(n*|axis|/m), or 180 when m==0
+        axis_norm = sqrt(inner(self.axis, self.axis))
+        theta_arr = np.where(
+            M_v > 0,
+            np.degrees(2 * np.arctan(
+                N_v.astype(float) * axis_norm
+                / np.where(M_v > 0, M_v, 1).astype(float))),
+            180.0
+        )
+
+        for m, n, sigma, theta in zip(M_v.tolist(), N_v.tolist(),
+                                      s_v.tolist(), theta_arr.tolist()):
+            sigma_theta[sigma].append([theta, m, n])
 
         if not sigma_theta:
             raise ValueError("Cannot find any matching GB. Most likely there "

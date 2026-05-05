@@ -116,16 +116,13 @@ class Grain(Structure):
             scaling_matrix (3x3 matrix): The scaling matrix to make supercell.
         """
         s = self * scaling_matrix
-        for i, site in enumerate(s):
-            f_coords = np.mod(site.frac_coords, 1)
-            # The following for loop is probably not necessary. But I will leave
-            # it here for now.
-            for j, v in enumerate(f_coords):
-                if abs(v - 1) < 1e-6:
-                    f_coords[j] = 0
-            s[i] = PeriodicSite(site.specie, f_coords, site.lattice,
-                                properties=site.properties)
-        self._sites = s.sites
+        # Vectorise frac_coords cleanup across all sites at once
+        all_fc = np.mod(np.array([site.frac_coords for site in s]), 1)
+        all_fc[np.abs(all_fc - 1) < 1e-6] = 0
+        self._sites = [
+            PeriodicSite(site.specie, fc, site.lattice, properties=site.properties)
+            for site, fc in zip(s, all_fc)
+        ]
         self._lattice = s.lattice
         new_lat = Lattice.from_parameters(*s.lattice.parameters)
         self.lattice = new_lat

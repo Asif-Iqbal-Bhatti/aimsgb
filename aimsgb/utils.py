@@ -1,6 +1,7 @@
 from __future__ import division
 
 import numpy as np
+from fractions import Fraction
 from numpy.linalg import norm
 from functools import wraps, reduce
 try:
@@ -51,20 +52,23 @@ def is_integer(a, tol=1e-5):
 
 def get_smallest_multiplier(a, max_n=10000):
     """
-    Get the smallest multiplier to make the list with all integers
+    Get the smallest multiplier to make the list with all integers.
+    Uses Fraction LCM instead of a linear scan, which is dramatically faster
+    when the true multiplier is large (e.g. 500 used to require 500 iterations).
     Args:
         a (list): A list of numbers
-        max_n (int): The up limit to search multiplier
+        max_n (int): The upper limit for denominator search
 
     Returns:
         The smallest integer multiplier
     """
-    a = np.array(a)
-    for i in range(1, max_n):
-        if is_integer(i * a):
-            return i
-    raise ValueError("Cannot find an integer matrix with multiplier "
-                     "searched already up to %s" % max_n)
+    a = np.asarray(a, dtype=float).ravel()
+    nonzero = a[np.abs(a) > 1e-10]
+    if len(nonzero) == 0:
+        return 1
+    denoms = [Fraction(float(x)).limit_denominator(max_n).denominator
+              for x in nonzero]
+    return int(reduce(lambda x, y: x * y // pygcd(x, y), denoms))
 
 
 def reduce_integer(integer):
