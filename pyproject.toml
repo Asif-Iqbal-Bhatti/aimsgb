@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aimsgb"
+version = "1.1.1"
+description = "aimsgb is a python library for generatng the atomic coordinates of periodic grain boundaries. Copyright © 2018 The Regents of the University of California. All Rights Reserved. See more in Copyright."
+readme = "README.rst"
+requires-python = ">=3.9"
+authors = [
+    { name = "Jianli Cheng" },
+    { name = "Kesong YANG" },
+]
+maintainers = [
+    { name = "Jianli Cheng", email = "chengjianli90@gmail.com" },
+    { name = "Sicong JIANG", email = "sij014@ucsd.edu" },
+    { name = "Kesong YANG", email = "kesong@ucsd.edu" },
+]
+keywords = ["material science", "grain boundary", "molecular simulation"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering :: Physics",
+    "Topic :: Scientific/Engineering :: Chemistry",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+    "pymatgen",
+    "mp_api",
+    "numpy",
+    "pytest",
+]
+
+[project.urls]
+Homepage = "http://aimsgb.org"
+
+[project.scripts]
+aimsgb = "aimsgb.agb:main"
+
+[tool.setuptools]
+packages = { find = { exclude = ["*.tests"] } }
+include-package-data = true
