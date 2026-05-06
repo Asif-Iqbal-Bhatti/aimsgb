@@ -7,37 +7,6 @@ easy and fast construction of tilt and twist boundaries by assigining the degree
 of fit (Σ), rotation axis, grain boundary plane and initial crystal structure.
 
 
-Install aimsgb
-==============
-Method 1: Use Pip
------------------
-The easiest way to install aimsgb is to simply run a one-liner in pip::
-
-   pip install aimsgb
-
-Method 2: Use Git to install
-----------------------------
-1. Clone the latest version from github::
-
-    git clone https://github.com/ksyang2013/aimsgb.git
-
-2. Navigate to aimsgb folder::
-
-    cd aimsgb
-
-3. Type in the root of the repo::
-
-    pip install .
-
-4. or to install the package in development mode::
-
-    pip install -e .
-
-
-Usage
-==================
-Refer to the `documentation
-<https://aimsgb-docs.readthedocs.io/en/latest/>`_ for more details.
 
 Changelog
 =========
